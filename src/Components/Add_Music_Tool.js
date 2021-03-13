@@ -244,11 +244,13 @@ const Add_Music_Tool = (props) => {
       reutrn;
     }
     const bucketList = buckets;
-    return bucketList.pushPath(bucketKey, path, file.stream());
+    let arrayBuf = await file.arrayBuffer();
+    return bucketList.pushPath(bucketKey, path, arrayBuf);
   };
 
   const processAndStore = async (song, path, songName) => {
     const location = `${path}/${songName}`;
+
     const raw = await insertFile(song, location);
     console.log(raw.path.cid.toString());
     const metaData = {
