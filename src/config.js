@@ -1,4 +1,4 @@
-const CONTRACT_NAME = process.env.CONTRACT_NAME || "blockbopper";
+const CONTRACT_NAME = process.env.CONTRACT_NAME || "blockbop.blockhead.testnet";
 
 function getConfig(env) {
   switch (env) {
