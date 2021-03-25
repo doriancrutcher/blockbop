@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ReactAudioPlayer from "react-audio-player";
-import { Card, Container, Row, Col, Jumbotron } from "react-bootstrap";
+import { Card, Container, Row, Col, Jumbotron, Table } from "react-bootstrap";
 import Dropzone from "react-dropzone";
 
 import {
@@ -30,6 +30,7 @@ const Add_Music_Tool = (props) => {
     author: "",
     date: 0,
     paths: [],
+    songNames: [],
   });
   const [music, changeFile] = useState("");
 
@@ -105,6 +106,20 @@ const Add_Music_Tool = (props) => {
         throw new Error("No identity");
       }
       const restored = PrivateKey.fromString(storedIdent);
+      let userName = await window.contract.getUserName({
+        nearName: window.accountId,
+      });
+      console.log(userName);
+      let onBlockChain = await window.contract.get_ipfs_key({
+        artistName: userName,
+      });
+
+      if (onBlockChain === "No Key Retrieved") {
+        await window.contract.set_IPFS_Keys({
+          artistName: userName,
+          ipfsKey: storedIdent,
+        });
+      }
       return restored;
     } catch (e) {
       // if any error, create a new idenitty
@@ -112,9 +127,17 @@ const Add_Music_Tool = (props) => {
         const identy = PrivateKey.fromRandom();
         const identityString = identy.toString();
         localStorage.setItem("identity", identityString);
+        let userName = await window.contract.getUserName({
+          nearName: window.accountId,
+        });
+        console.log(userName);
+        await window.contract.set_IPFS_Keys({
+          artistName: userName,
+          ipfsKey: identityString,
+        });
         // modify this to store onto the blockchain with appropriate account or in
         // some backend server
-        return id;
+        return identityString;
       } catch (err) {
         return err.message + ">;D";
       }
@@ -161,6 +184,7 @@ const Add_Music_Tool = (props) => {
       author: useridentity.toString(),
       date: new Date().getTime(),
       paths: [],
+      songNames: [],
     };
     await storeIndex(index);
     return index;
@@ -193,8 +217,9 @@ const Add_Music_Tool = (props) => {
       reutrn;
     }
 
+    console.log(index);
+
     for (let path of index.paths) {
-      console.log(path);
       const metadata = await buckets.pullPath(bucketKey, path);
       const value = await metadata.next();
 
@@ -204,13 +229,15 @@ const Add_Music_Tool = (props) => {
       }
 
       let info = JSON.parse(str);
-      console.log(info);
       let song = info.original;
       songList.push({
         src: `${ipfsGateway}/ipfs/${song.cid}`,
         key: song.name,
+        songName: info.name,
       });
     }
+
+    console.log(songList);
 
     changeSongs(songList);
   };
@@ -252,7 +279,6 @@ const Add_Music_Tool = (props) => {
     const location = `${path}/${songName}`;
 
     const raw = await insertFile(song, location);
-    console.log(raw.path.cid.toString());
     const metaData = {
       cid: raw.path.cid.toString(),
       name: songName,
@@ -266,8 +292,6 @@ const Add_Music_Tool = (props) => {
       console.error("No bucket client or root key");
       reutrn;
     }
-
-    console.log(file);
 
     const songSchema = {};
     const now = new Date().getTime();
@@ -284,9 +308,7 @@ const Add_Music_Tool = (props) => {
     const metadata = Buffer.from(JSON.stringify(songSchema, null, 2));
     const metaname = `${now}_${file.name}.json`;
     const path = `metadata/${metaname}`;
-
     await buckets.pushPath(bucketKey, path, metadata);
-    console.log(await buckets.pullPath(bucketKey, path).next());
 
     let tempIndex = index;
     tempIndex.paths.push(path);
@@ -315,43 +337,76 @@ const Add_Music_Tool = (props) => {
     storeIndex(index);
   };
 
+  // Like and Dislike Contract Functions
+
   return (
     <React.Fragment>
       <Container>
         <Row className='d-flex justify-content-center'>
           <Jumbotron
-            style={{ marginTop: "10px" }}
+            style={{ marginTop: "10px", backgroundColor: "rgba(0,0,0,0.7)" }}
             className='d-flex justify-content-center'
           >
             <Dropzone
-              style={{ width: "100%", height: "100%" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                backgroundColor: "blue",
+              }}
               onDrop={(acceptedFiles) => onDrop(acceptedFiles)}
             >
               {({ getRootProps, getInputProps }) => (
-                <section>
-                  <div {...getRootProps()}>
-                    <input {...getInputProps()} />
-                    <p>
-                      Drag 'n' drop some files here, or click to select files
-                    </p>
-                  </div>
-                </section>
+                <Button
+                  className='justify-content-center d-flex align-items-center'
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    width: "100%",
+                    height: "100%",
+                    color: "white",
+                  }}
+                  {...getRootProps()}
+                >
+                  <input {...getInputProps()} />
+                  <p
+                    style={{
+                      marginTop: "0",
+                      fontFamily: "Roboto Mono, monospace;",
+                    }}
+                  >
+                    Drag 'n' drop some files here, or click to select files
+                  </p>
+                </Button>
               )}
             </Dropzone>
           </Jumbotron>
         </Row>
-
-        {songs.map((x, index) => {
-          return (
-            <Row
-              style={{ marginTop: "10px" }}
-              key={index}
-              className='d-flex justify-content-center'
-            >
-              <ReactAudioPlayer src={x.src} autoPlay controls />
-            </Row>
-          );
-        })}
+        <Container>
+          <Table striped bordered hover variant='dark'>
+            <thead>
+              <tr>
+                <th>Song Name</th>
+                <th>Player</th>
+              </tr>
+            </thead>
+            <tbody>
+              {songs.map((x, index) => {
+                return (
+                  <tr>
+                    <td>{x.songName}</td>
+                    <td className='ju'>
+                      {" "}
+                      <ReactAudioPlayer src={x.src} autoPlay={false} controls />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Container>
       </Container>
     </React.Fragment>
   );
