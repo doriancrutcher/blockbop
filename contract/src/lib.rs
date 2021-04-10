@@ -11,8 +11,11 @@
  *
  */
 
+#![allow(non_snake_case)]
+
 // To conserve gas, efficient serialization is achieved through Borsh (http://borsh.io/)
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::LookupMap;
 use near_sdk::wee_alloc;
 use near_sdk::{env, near_bindgen};
 use std::collections::HashMap;
@@ -23,67 +26,71 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 // Structs in Rust are similar to other languages, and may include impl keyword as shown below
 // Note: the names of the structs are not important when calling the smart contract, but the function names are
 #[near_bindgen]
-#[derive(Default, BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize)]
 pub struct BlockBopRecords {
-    userNames: HashMap<String, String>,
-    nearNames: HashMap<String, String>,
-    twitchNames: HashMap<String, String>,
-    listensRecord: HashMap<String, u64>,
-    ipfsStorageKeys: HashMap<String, String>,
-    twitchHandleStorage: HashMap<String, String>,
-    userNameTracker: HashMap<String, Vec<String>>,
-    likeStore: HashMap<String, HashMap<String, i32>>,
-    dislikeStore: HashMap<String, HashMap<String, i32>>,
-    listensStore: HashMap<String, i32>,
-    records: HashMap<String, String>,
+    userNames: LookupMap<String, String>,
+    nearNames: LookupMap<String, String>,
+    twitchNames: LookupMap<String, String>,
+    listensRecord: LookupMap<String, u64>,
+    ipfsStorageKeys: LookupMap<String, String>,
+    twitchHandleStorage: LookupMap<String, String>,
+    userNameTracker: LookupMap<String, Vec<String>>,
+    likeStore: LookupMap<String, HashMap<String, i32>>,
+    dislikeStore: LookupMap<String, HashMap<String, i32>>,
+    listensStore: LookupMap<String, i32>,
+    records: LookupMap<String, String>,
+}
+
+impl Default for BlockBopRecords {
+    fn default() -> Self {
+        Self {
+            userNames: LookupMap::new(b"u".to_vec()),
+            nearNames: LookupMap::new(b"n".to_vec()),
+            twitchNames: LookupMap::new(b"t".to_vec()),
+            listensRecord: LookupMap::new(b"l".to_vec()),
+            ipfsStorageKeys: LookupMap::new(b"i".to_vec()),
+            twitchHandleStorage: LookupMap::new(b"h".to_vec()),
+            userNameTracker: LookupMap::new(b"r".to_vec()),
+            likeStore: LookupMap::new(b"s".to_vec()),
+            dislikeStore: LookupMap::new(b"d".to_vec()),
+            listensStore: LookupMap::new(b"e".to_vec()),
+            records: LookupMap::new(b"o".to_vec()),
+        }
+    }
 }
 
 #[near_bindgen]
 impl BlockBopRecords {
     pub fn add_listens(&mut self, displayName: String, listens: i32) {
-        if (self.listensStore.contains_key(&displayName)) {
-            let mut curr_listens: i32 = match self.listensStore.get(&displayName) {
-                Some(amount) => amount.clone(),
-                None => 0,
-            };
+        if self.listensStore.contains_key(&displayName) {
+            let mut curr_listens: i32 = self.listensStore.get(&displayName).unwrap_or_default();
             curr_listens = curr_listens + listens;
-            self.listensStore.insert(displayName.into(), curr_listens);
+            self.listensStore.insert(&displayName, &curr_listens);
         } else {
-            self.listensStore.insert(displayName, listens);
+            self.listensStore.insert(&displayName, &listens);
         }
     }
 
     pub fn sub_listens(&mut self, displayName: String, listens: i32) {
-        if (self.listensStore.contains_key(&displayName)) {
-            let mut curr_listens: i32 = match self.listensStore.get(&displayName) {
-                Some(amount) => amount.clone(),
-                None => 0,
-            };
-            if (curr_listens < listens) {
-                println!("not enough listens");
+        if self.listensStore.contains_key(&displayName) {
+            let mut curr_listens: i32 = self.listensStore.get(&displayName).unwrap_or_default();
+            if curr_listens < listens {
+                env::log(b"not enough listens");
             } else {
                 curr_listens = curr_listens - listens;
-                self.listensStore.insert(displayName.into(), curr_listens);
+                self.listensStore.insert(&displayName, &curr_listens);
             }
         } else {
-            println!("user not found")
+            env::log(b"user not found")
         }
     }
 
     pub fn get_listens(&self, displayName: String) -> i32 {
-        if (self.listensStore.contains_key(&displayName)) {
-            match self.listensStore.get(&displayName) {
-                Some(listensTotal) => listensTotal.clone(),
-                None => 0,
-            }
-        } else {
-            let x: i32 = 0;
-            x
-        }
+        self.listensStore.get(&displayName).unwrap_or_default()
     }
 
     pub fn transfer_listens(&mut self, sender: String, recipient: String, listens: i32) {
-        if (self.get_listens(sender.clone()) > listens) {
+        if self.get_listens(sender.clone()) > listens {
             self.sub_listens(sender.clone(), listens.clone());
             self.add_listens(recipient.clone(), listens.clone());
         };
@@ -95,87 +102,87 @@ impl BlockBopRecords {
         // Use env::log to record logs permanently to the blockchain!
         env::log(format!("Saving greeting '{}' for account '{}'", message, account_id,).as_bytes());
 
-        self.records.insert(account_id, message);
+        self.records.insert(&account_id, &message);
     }
 
     // `match` is similar to `switch` in other languages; here we use it to default to "Hello" if
     // self.records.get(&account_id) is not yet defined.
     // Learn more: https://doc.rust-lang.org/book/ch06-02-match.html#matching-with-optiont
-    pub fn get_greeting(&self, account_id: String) -> &str {
+    pub fn get_greeting(&self, account_id: String) -> String {
         match self.records.get(&account_id) {
             Some(greeting) => greeting,
-            None => "Hello",
+            None => "Hello".to_string(),
         }
     }
     // This is not a secure way to store a user's key.
     // only to be used for development purposes until a proper backend has been made to store the key in an environment variable
     pub fn set_IPFS_Keys(&mut self, artistName: String, ipfsKey: String) {
-        println!("{:}", env::signer_account_id());
-        self.ipfsStorageKeys.insert(artistName, ipfsKey);
+        env::log(format!("{:}", env::signer_account_id()).as_bytes());
+        self.ipfsStorageKeys.insert(&artistName, &ipfsKey);
     }
 
-    pub fn get_ipfs_key(&self, artistName: String) -> &str {
+    pub fn get_ipfs_key(&self, artistName: String) -> String {
         match self.ipfsStorageKeys.get(&artistName) {
             Some(ipfsKey) => ipfsKey,
-            None => "No Key Retrieved",
+            None => "No Key Retrieved".to_string(),
         }
     }
 
     pub fn setNewUserName(&mut self, displayName: String) {
-        self.userNames.insert(env::signer_account_id(), displayName);
+        self.userNames
+            .insert(&env::signer_account_id(), &displayName);
     }
 
-    pub fn getUserName(&self, nearName: String) -> &str {
+    pub fn getUserName(&self, nearName: String) -> String {
         match self.userNames.get(&nearName) {
             Some(name) => name,
-            None => "no name retrieved",
+            None => "no name retrieved".to_string(),
         }
     }
 
     pub fn setNearName(&mut self, displayName: String) {
-        self.nearNames.insert(displayName, env::signer_account_id());
+        self.nearNames
+            .insert(&displayName, &env::signer_account_id());
     }
 
-    pub fn getNearName(&self, displayName: String) -> &str {
+    pub fn getNearName(&self, displayName: String) -> String {
         match self.nearNames.get(&displayName) {
             Some(name) => name,
-            None => "no name found",
+            None => "no name found".to_string(),
         }
     }
 
     pub fn setTwitchName(&mut self, twitchName: String) {
         self.twitchHandleStorage
-            .insert(env::signer_account_id(), twitchName);
+            .insert(&env::signer_account_id(), &twitchName);
     }
 
-    pub fn getTwitchName(&self, accountId: String) -> &str {
+    pub fn getTwitchName(&self, accountId: String) -> String {
         match self.twitchHandleStorage.get(&accountId) {
             Some(name) => name,
-            None => "no twitch handle retreived",
+            None => "no twitch handle retreived".to_string(),
         }
     }
 
     pub fn get_user_name_list(&self) -> Vec<String> {
-        let res = vec![];
-        match self.userNameTracker.get("blockbop") {
-            Some(list) => (&list).to_vec(),
-            None => res,
-        }
+        self.userNameTracker
+            .get(&"blockbop".to_string())
+            .unwrap_or_default()
     }
 
     pub fn add_user_name_to_registry(&mut self, userName: String) {
         // let mut nameList: Vec<String> = &self.get_user_name_list();
         // let mut userArray = Vec::new();
 
-        if (self.userNameTracker.contains_key("blockbop")) {
-            let mut nameList = &mut self.get_user_name_list();
+        if self.userNameTracker.contains_key(&"blockbop".to_string()) {
+            let nameList = &mut self.get_user_name_list();
 
             nameList.push(userName);
             self.userNameTracker
-                .insert(String::from("blockbop"), (&nameList).to_vec());
+                .insert(&"blockbop".to_string(), &nameList);
         } else {
             self.userNameTracker
-                .insert(String::from("blockbop"), vec![userName]);
+                .insert(&"blockbop".to_string(), &vec![userName]);
         }
     }
 
@@ -191,14 +198,14 @@ impl BlockBopRecords {
         let z = String::from("Null");
         let x: i32 = 0;
         y.insert(z, x);
-        if (self.likeStore.contains_key(&artistName)) {
+        if self.likeStore.contains_key(&artistName) {
             let mut artist_song_hashmap: HashMap<String, i32> =
                 match self.likeStore.get(&artistName) {
                     Some(songList) => songList.clone(),
                     None => y,
                 };
 
-            if (artist_song_hashmap.contains_key(&songName)) {
+            if artist_song_hashmap.contains_key(&songName) {
                 let zero_val: i32 = 0;
                 let mut like_count: i32 = match artist_song_hashmap.get(&songName) {
                     Some(count) => count.clone(),
@@ -209,12 +216,11 @@ impl BlockBopRecords {
                 like_count = like_count + add_one_like;
                 artist_song_hashmap.insert(songName.into(), like_count);
 
-                self.likeStore
-                    .insert(artistName.into(), artist_song_hashmap);
+                self.likeStore.insert(&artistName, &artist_song_hashmap);
             } else {
                 let first_like: i32 = 1;
                 artist_song_hashmap.insert(songName, first_like);
-                self.likeStore.insert(artistName, artist_song_hashmap);
+                self.likeStore.insert(&artistName, &artist_song_hashmap);
             }
 
             // if (&artist_song_hashmap.contains_key(songName)) {
@@ -224,44 +230,29 @@ impl BlockBopRecords {
             let first_like: i32 = 1;
             let mut song_hash_map = HashMap::new();
             song_hash_map.insert(songName, first_like);
-            self.likeStore.insert(artistName, song_hash_map);
+            self.likeStore.insert(&artistName, &song_hash_map);
         }
     }
     pub fn get_likes(&self, artistName: String, songName: String) -> i32 {
-        let mut y = HashMap::new();
-        let z = String::from("Null");
-        let x: i32 = 0;
-        y.insert(z, x);
-        let result: i32;
+        let song_list = self.likeStore.get(&artistName);
 
-        let get_song_list = match self.likeStore.get(&artistName) {
-            Some(list_of_songs) => list_of_songs.clone(),
-            None => y,
-        };
-
-        if (get_song_list.contains_key(&songName)) {
-            let get_song_likes = match get_song_list.get(&songName) {
-                Some(likes) => likes.clone(),
-                None => 0,
-            };
-            get_song_likes
-        } else {
-            0
-        }
+        song_list
+            .map(|list| list.get(&songName).copied().unwrap_or_default())
+            .unwrap_or_default()
     }
     pub fn add_to_dislikes(&mut self, artistName: String, songName: String) {
         let mut y = HashMap::new();
         let z = String::from("Null");
         let x: i32 = 0;
         y.insert(z, x);
-        if (self.dislikeStore.contains_key(&artistName)) {
+        if self.dislikeStore.contains_key(&artistName) {
             let mut artist_song_hashmap: HashMap<String, i32> =
                 match self.dislikeStore.get(&artistName) {
                     Some(songList) => songList.clone(),
                     None => y,
                 };
 
-            if (artist_song_hashmap.contains_key(&songName)) {
+            if artist_song_hashmap.contains_key(&songName) {
                 let zero_val: i32 = 0;
                 let mut like_count: i32 = match artist_song_hashmap.get(&songName) {
                     Some(count) => count.clone(),
@@ -272,12 +263,11 @@ impl BlockBopRecords {
                 like_count = like_count + add_one_like;
                 artist_song_hashmap.insert(songName.into(), like_count);
 
-                self.dislikeStore
-                    .insert(artistName.into(), artist_song_hashmap);
+                self.dislikeStore.insert(&artistName, &artist_song_hashmap);
             } else {
                 let first_like: i32 = 1;
                 artist_song_hashmap.insert(songName, first_like);
-                self.dislikeStore.insert(artistName, artist_song_hashmap);
+                self.dislikeStore.insert(&artistName, &artist_song_hashmap);
             }
 
             // if (&artist_song_hashmap.contains_key(songName)) {
@@ -287,30 +277,15 @@ impl BlockBopRecords {
             let first_like: i32 = 1;
             let mut song_hash_map = HashMap::new();
             song_hash_map.insert(songName, first_like);
-            self.dislikeStore.insert(artistName, song_hash_map);
+            self.dislikeStore.insert(&artistName, &song_hash_map);
         }
     }
     pub fn get_dislikes(&self, artistName: String, songName: String) -> i32 {
-        let mut y = HashMap::new();
-        let z = String::from("Null");
-        let x: i32 = 0;
-        y.insert(z, x);
-        let result: i32;
+        let song_list = self.dislikeStore.get(&artistName);
 
-        let get_song_list = match self.dislikeStore.get(&artistName) {
-            Some(list_of_songs) => list_of_songs.clone(),
-            None => y,
-        };
-
-        if (get_song_list.contains_key(&songName)) {
-            let get_song_likes = match get_song_list.get(&songName) {
-                Some(likes) => likes.clone(),
-                None => 0,
-            };
-            get_song_likes
-        } else {
-            0
-        }
+        song_list
+            .map(|list| list.get(&songName).copied().unwrap_or_default())
+            .unwrap_or_default()
     }
 }
 
